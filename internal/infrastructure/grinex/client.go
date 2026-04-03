@@ -185,6 +185,11 @@ func parseDepthWarmupTargets(depthURL string) (warmupURL, jsonOrigin, jsonRefere
 		apexHost = h
 	}
 
+	if port := u.Port(); port != "" {
+		apiHost = apiHost + ":" + port
+		apexHost = apexHost + ":" + port
+	}
+
 	scheme := u.Scheme
 
 	if apexHost != apiHost {
