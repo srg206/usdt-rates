@@ -1,5 +1,6 @@
 services:
   postgres:
+    container_name: postgres
     image: postgres:16-alpine
     env_file:
       - postgres.env
@@ -12,6 +13,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  migrator:
+    image: golang:1.25-alpine
+    container_name: migrator
+    restart: "no"
+    profiles: ["tools"]
+    env_file:
+      - postgres.env
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      sh -c "go run github.com/pressly/goose/v3/cmd/goose@v3.24.1 -dir ./migrations postgres \"postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB}?sslmode=disable\" up"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   app:
     build: .
