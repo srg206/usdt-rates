@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -14,6 +15,7 @@ import (
 	ratesv1 "usdt-rates/gen/rates/v1"
 	"usdt-rates/internal/application"
 	"usdt-rates/internal/grpc/interceptor"
+	"usdt-rates/internal/health"
 	"usdt-rates/internal/server"
 )
 
@@ -48,6 +50,21 @@ func main() {
 		app.Logger.Info("gRPC listening", zap.String("addr", app.Config.GRPCAddr))
 		if err := s.Serve(lis); err != nil {
 			app.Logger.Error("grpc serve", zap.Error(err))
+		}
+	}()
+
+	mux := http.NewServeMux()
+	health.NewHandler(app.PostgresRepo, app.Grinex, app.Config.HTTPTimeout).Mount(mux)
+	healthSrv := &http.Server{Addr: app.Config.HealthHTTPAddr, Handler: mux}
+	app.Closer.Add(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), app.Config.ShutdownTimeout)
+		defer cancel()
+		return healthSrv.Shutdown(ctx)
+	})
+	go func() {
+		app.Logger.Info("health HTTP listening", zap.String("addr", app.Config.HealthHTTPAddr))
+		if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			app.Logger.Error("health http serve", zap.Error(err))
 		}
 	}()
 

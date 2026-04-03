@@ -12,6 +12,7 @@ import (
 // Config holds runtime settings loaded from environment variables with CLI flag overrides.
 type Config struct {
 	GRPCAddr             string
+	HealthHTTPAddr       string
 	PostgresURL          string
 	MigrationsPath       string
 	GrinexDepthURL       string
@@ -28,6 +29,10 @@ type Config struct {
 // Load reads required environment variables, then applies flag overrides (flag.Parse).
 func Load() (*Config, error) {
 	grpcAddr, err := requireEnv("GRPC_ADDR")
+	if err != nil {
+		return nil, err
+	}
+	healthHTTPAddr, err := requireEnv("HEALTH_HTTP_ADDR")
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +83,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		GRPCAddr:             grpcAddr,
+		HealthHTTPAddr:       healthHTTPAddr,
 		PostgresURL:          postgresURL,
 		MigrationsPath:       migrationsPath,
 		GrinexDepthURL:       grinexDepthURL,
@@ -92,6 +98,7 @@ func Load() (*Config, error) {
 	}
 
 	flag.StringVar(&cfg.GRPCAddr, "grpc-addr", cfg.GRPCAddr, "gRPC listen address")
+	flag.StringVar(&cfg.HealthHTTPAddr, "health-http-addr", cfg.HealthHTTPAddr, "HTTP listen address for /healthz/* probes")
 	flag.StringVar(&cfg.PostgresURL, "postgres-url", cfg.PostgresURL, "PostgreSQL connection URL")
 	flag.StringVar(&cfg.MigrationsPath, "migrations-path", cfg.MigrationsPath, "goose migrations directory")
 	flag.StringVar(&cfg.GrinexDepthURL, "grinex-depth-url", cfg.GrinexDepthURL, "Grinex HTTP depth/order book URL")
