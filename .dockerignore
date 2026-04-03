@@ -1,0 +1,13 @@
+.git
+.github
+bin
+*.md
+!README.md
+coverage.*
+*.out
+*.test
+.env
+app.env
+postgres.env
+.cursor
+mcps

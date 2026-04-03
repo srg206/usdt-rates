@@ -225,9 +225,9 @@ func (c *Client) Fetch(ctx context.Context) (*OrderBook, error) {
 	}
 
 	var env depthEnvelope
-	if err := json.Unmarshal(body, &env); err != nil {
-		c.logUpstreamFailure(resp, err, "json_decode")
-		return nil, fmt.Errorf("decode depth: %w", err)
+	if decErr := json.Unmarshal(body, &env); decErr != nil {
+		c.logUpstreamFailure(resp, decErr, "json_decode")
+		return nil, fmt.Errorf("decode depth: %w", decErr)
 	}
 
 	bids, err := parseSidePrices(env.Bids)

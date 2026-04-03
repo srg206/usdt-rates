@@ -1,0 +1,20 @@
+# https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      check-blank: true
+    govet:
+      enable-all: true
+      disable:
+        # Struct field order here follows readability, not size optimization.
+        - fieldalignment
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
