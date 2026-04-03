@@ -24,9 +24,11 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
+# Local env / secrets (any name ending in .env)
+*.env
+app.env 
 
+postgres.env
 # Editor/IDE
 # .idea/
 # .vscode/
