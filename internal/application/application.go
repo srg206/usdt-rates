@@ -42,8 +42,7 @@ func NewApp(ctx context.Context) (*App, error) {
 	}
 	app.Logger = zl
 	app.Closer.Add(func() error {
-		_ = zl.Sync()
-		return nil
+		return zl.Sync()
 	})
 
 	pool, err := pgxpool.New(ctx, cfg.PostgresURL)
@@ -53,9 +52,9 @@ func NewApp(ctx context.Context) (*App, error) {
 	app.DB = pool
 	app.PostgresRepo = repository.New(pool)
 
-	if err := pool.Ping(ctx); err != nil {
+	if pingErr := pool.Ping(ctx); pingErr != nil {
 		pool.Close()
-		return nil, fmt.Errorf("postgres ping: %w", err)
+		return nil, fmt.Errorf("postgres ping: %w", pingErr)
 	}
 
 	app.Closer.Add(func() error {
