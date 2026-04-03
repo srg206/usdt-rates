@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"usdt-rates/config"
-	"usdt-rates/internal/grinex"
-	"usdt-rates/internal/repository"
+	"usdt-rates/internal/infrastructure/grinex"
+	"usdt-rates/internal/infrastructure/repository"
 	"usdt-rates/pkg/closer"
 	"usdt-rates/pkg/logger"
 )

@@ -6,21 +6,18 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-
-	"usdt-rates/internal/grinex"
-	"usdt-rates/internal/repository"
 )
 
 // Handler serves Kubernetes-style liveness and readiness probes over HTTP.
 type Handler struct {
-	Repo    *repository.Repository
-	Grinex  *grinex.Client
-	Timeout time.Duration
+	DB       DatabasePinger
+	Exchange ExchangeDepthReadiness
+	Timeout  time.Duration
 }
 
 // NewHandler builds probe handlers. timeout caps each readiness check (PostgreSQL + Grinex in parallel).
-func NewHandler(repo *repository.Repository, gx *grinex.Client, timeout time.Duration) *Handler {
-	return &Handler{Repo: repo, Grinex: gx, Timeout: timeout}
+func NewHandler(db DatabasePinger, exchange ExchangeDepthReadiness, timeout time.Duration) *Handler {
+	return &Handler{DB: db, Exchange: exchange, Timeout: timeout}
 }
 
 // Live reports that the process is up (no dependency checks).
@@ -39,10 +36,10 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		return h.Repo.Ping(gctx)
+		return h.DB.Ping(gctx)
 	})
 	g.Go(func() error {
-		_, err := h.Grinex.Fetch(gctx)
+		_, err := h.Exchange.Fetch(gctx)
 		return err
 	})
 
