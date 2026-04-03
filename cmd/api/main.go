@@ -10,13 +10,14 @@ import (
 
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
+	grpcstd "google.golang.org/grpc"
 
 	ratesv1 "usdt-rates/gen/rates/v1"
 	"usdt-rates/internal/application"
+	"usdt-rates/internal/grpc"
 	"usdt-rates/internal/grpc/interceptor"
-	"usdt-rates/internal/health"
-	"usdt-rates/internal/server"
+	"usdt-rates/internal/http/health"
+	"usdt-rates/internal/usecase"
 )
 
 func main() {
@@ -35,11 +36,12 @@ func main() {
 		app.Logger.Fatal("listen", zap.Error(err))
 	}
 
-	s := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(interceptor.UnaryRequestLogger(app.Logger)),
-		grpc.ChainStreamInterceptor(interceptor.StreamRequestLogger(app.Logger)),
+	s := grpcstd.NewServer(
+		grpcstd.ChainUnaryInterceptor(interceptor.UnaryRequestLogger(app.Logger)),
+		grpcstd.ChainStreamInterceptor(interceptor.StreamRequestLogger(app.Logger)),
 	)
-	ratesv1.RegisterRatesServiceServer(s, server.NewRates(app.Config, app.Grinex, app.PostgresRepo))
+	getRates := usecase.NewGetRates(app.Config, app.Grinex, app.PostgresRepo)
+	ratesv1.RegisterRatesServiceServer(s, grpc.NewRatesService(getRates))
 
 	app.Closer.Add(func() error {
 		s.GracefulStop()
