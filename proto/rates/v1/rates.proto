@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package rates.v1;
+
+option go_package = "usdt-rates/gen/rates/v1;ratesv1";
+
+import "google/protobuf/timestamp.proto";
+
+// RatesService exposes USDT spot quotes derived from the exchange order book.
+service RatesService {
+  // GetRates fetches the current book from Grinex, computes bid/ask metrics, and persists a snapshot.
+  rpc GetRates(GetRatesRequest) returns (GetRatesResponse);
+}
+
+message GetRatesRequest {}
+
+message GetRatesResponse {
+  // Time assigned by the exchange payload when present, otherwise server time at fetch.
+  google.protobuf.Timestamp exchange_time = 1;
+  // Best bid / best ask (first levels).
+  double bid = 2;
+  double ask = 3;
+  // Price at configured 1-based depth index N for bid and ask sides.
+  double bid_top_n = 4;
+  double ask_top_n = 5;
+  // Average price across inclusive 1-based levels [avg_n; avg_m] for each side.
+  double bid_avg_nm = 6;
+  double ask_avg_nm = 7;
+  int32 top_n = 8;
+  int32 avg_n = 9;
+  int32 avg_m = 10;
+}
