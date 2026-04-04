@@ -1,0 +1,36 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+
+  # Same defaults as postgres.env.example; change password here if you change postgres.env
+  - name: PostgreSQL
+    uid: pg-usdt-rates
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: usdt_rates
+    user: postgres
+    secureJsonData:
+      password: postgres
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      connMaxLifetime: 14400

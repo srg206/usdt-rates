@@ -1,0 +1,103 @@
+{
+  "uid": "usdt-rates-db",
+  "title": "USDT Rates — database (snapshots)",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "editable": true,
+  "tags": ["usdt-rates", "postgres"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Bid / Ask (stored snapshots)",
+      "id": 1,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  exchange_time AS \"time\",\n  bid AS \"bid\",\n  ask AS \"ask\"\nFROM rate_snapshots\nWHERE\n  $__timeFilter(exchange_time)\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [{ "parameters": [], "type": "function" }],
+            "groupBy": [{ "property": { "type": "string" }, "type": "groupBy" }],
+            "limit": 50
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "TopN & avgNM (bid / ask)",
+      "id": 2,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  exchange_time AS \"time\",\n  bid_top_n AS \"bid_top_n\",\n  ask_top_n AS \"ask_top_n\",\n  bid_avg_nm AS \"bid_avg_nm\",\n  ask_avg_nm AS \"ask_avg_nm\"\nFROM rate_snapshots\nWHERE\n  $__timeFilter(exchange_time)\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [{ "parameters": [], "type": "function" }],
+            "groupBy": [{ "property": { "type": "string" }, "type": "groupBy" }],
+            "limit": 50
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Latest rows (newest first)",
+      "id": 3,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "pg-usdt-rates" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  id,\n  created_at,\n  exchange_time,\n  bid,\n  ask,\n  bid_top_n,\n  ask_top_n,\n  bid_avg_nm,\n  ask_avg_nm,\n  top_n,\n  avg_n,\n  avg_m\nFROM rate_snapshots\nORDER BY exchange_time DESC\nLIMIT 200",
+          "refId": "A",
+          "sql": {
+            "columns": [{ "parameters": [], "type": "function" }],
+            "groupBy": [{ "property": { "type": "string" }, "type": "groupBy" }],
+            "limit": 50
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false }
+      }
+    }
+  ]
+}

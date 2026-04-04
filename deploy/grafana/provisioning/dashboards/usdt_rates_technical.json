@@ -1,0 +1,189 @@
+{
+  "uid": "usdt-rates-technical",
+  "title": "USDT Rates — technical (RPS, latency, runtime)",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "editable": true,
+  "tags": ["usdt-rates", "technical"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "gRPC RPS (handled)",
+      "id": 1,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(grpc_server_handled_total{job=\"usdt-rates\"}[$__rate_interval]))",
+          "legendFormat": "rps",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "gRPC RPS by method",
+      "id": 2,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (grpc_method) (rate(grpc_server_handled_total{job=\"usdt-rates\"}[$__rate_interval]))",
+          "legendFormat": "{{grpc_method}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "gRPC latency p50 / p95 / p99 (server handling)",
+      "description": "Uses grpc_server_handling_seconds_bucket. If editor shows \"No metrics found\", that is only the metrics browser autocomplete — the query still works when metrics exist.",
+      "id": 3,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.50, sum(rate(grpc_server_handling_seconds_bucket{job=\"usdt-rates\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p50",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(grpc_server_handling_seconds_bucket{job=\"usdt-rates\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p95",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job=\"usdt-rates\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Process CPU (cores)",
+      "id": 4,
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "rate(process_cpu_seconds_total{job=\"usdt-rates\"}[$__rate_interval])",
+          "legendFormat": "cpu",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line" } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Resident memory",
+      "id": 5,
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 15 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "process_resident_memory_bytes{job=\"usdt-rates\"}",
+          "legendFormat": "RSS",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "drawStyle": "line" } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Go goroutines",
+      "id": 6,
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 15 },
+      "datasource": { "type": "prometheus", "name": "Prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "name": "Prometheus" },
+          "editorMode": "code",
+          "expr": "go_goroutines{job=\"usdt-rates\"}",
+          "legendFormat": "goroutines",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line" } },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    }
+  ]
+}

@@ -13,10 +13,15 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	"usdt-rates/internal/models/domain"
 )
+
+var grinexTracer = otel.Tracer("usdt-rates/grinex")
 
 const (
 	defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
@@ -92,24 +97,55 @@ func (c *Client) Fetch(ctx context.Context) (domain.OrderBook, error) {
 	var empty domain.OrderBook
 
 	// Warmup request for cookies / WAF
-	if _, err := c.hc.R().
-		SetContext(ctx).
-		SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8").
-		Get(c.warmupURL); err != nil {
-		return empty, fmt.Errorf("grinex warmup: %w", err)
+	{
+		ctx, sp := grinexTracer.Start(ctx, "HTTP GET grinex warmup")
+		sp.SetAttributes(
+			attribute.String("http.method", "GET"),
+			attribute.String("http.url", c.warmupURL),
+		)
+		_, err := c.hc.R().
+			SetContext(ctx).
+			SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8").
+			Get(c.warmupURL)
+		if err != nil {
+			sp.RecordError(err)
+			sp.SetStatus(codes.Error, err.Error())
+			sp.End()
+			return empty, fmt.Errorf("grinex warmup: %w", err)
+		}
+		sp.End()
 	}
 
-	resp, err := c.hc.R().
-		SetContext(ctx).
-		SetHeader("Accept", "application/json, text/plain, */*").
-		SetHeader("Origin", c.jsonOrigin).
-		SetHeader("Referer", c.jsonReferer).
-		Get(c.url)
-	if err != nil {
-		return empty, fmt.Errorf("grinex fetch: %w", err)
-	}
-	if resp.IsError() {
-		return empty, fmt.Errorf("grinex http %d: %s", resp.StatusCode(), string(resp.Body()))
+	var resp *resty.Response
+	{
+		ctx, sp := grinexTracer.Start(ctx, "HTTP GET grinex depth")
+		sp.SetAttributes(
+			attribute.String("http.method", "GET"),
+			attribute.String("http.url", c.url),
+		)
+		var err error
+		resp, err = c.hc.R().
+			SetContext(ctx).
+			SetHeader("Accept", "application/json, text/plain, */*").
+			SetHeader("Origin", c.jsonOrigin).
+			SetHeader("Referer", c.jsonReferer).
+			Get(c.url)
+		if err != nil {
+			sp.RecordError(err)
+			sp.SetStatus(codes.Error, err.Error())
+			sp.End()
+			return empty, fmt.Errorf("grinex fetch: %w", err)
+		}
+		if resp.IsError() {
+			httpErr := fmt.Errorf("grinex http %d: %s", resp.StatusCode(), string(resp.Body()))
+			sp.RecordError(httpErr)
+			sp.SetStatus(codes.Error, httpErr.Error())
+			sp.SetAttributes(attribute.Int("http.status_code", resp.StatusCode()))
+			sp.End()
+			return empty, httpErr
+		}
+		sp.SetAttributes(attribute.Int("http.status_code", resp.StatusCode()))
+		sp.End()
 	}
 
 	var env depthEnvelope
@@ -161,7 +197,7 @@ func (c *Client) Fetch(ctx context.Context) (domain.OrderBook, error) {
 		book.ExchangeTime = time.Now().UTC()
 	}
 
-	c.log.Info("grinex depth parsed",
+	c.log.Debug("grinex depth parsed",
 		zap.Int("bid_levels", len(book.Bids)),
 		zap.Int("ask_levels", len(book.Asks)),
 	)
