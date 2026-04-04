@@ -1,0 +1,32 @@
+# usdt-rates
+
+gRPC-сервис: тянет стакан USDT с Grinex, считает bid/ask (topN, avg по уровням), пишет снимок в PostgreSQL на **каждый** вызов `GetRates`. HTTP: health + Prometheus metrics. Опционально: OTLP-трейсы (Jaeger), логи в Docker → Loki через Promtail.
+
+## Запуск (Docker)
+
+1. `cp postgres.env.example postgres.env`
+2. `cp app.env.example app.env` — в `app.env` для контейнера задайте `POSTGRES_URL=postgres://postgres:postgres@postgres:5432/usdt_rates?sslmode=disable` (хост `postgres`, не `localhost`).
+3. `docker compose up -d postgres`
+4. `docker compose --profile tools run --rm migrator`
+5. `docker compose up -d` — поднимутся `app`, observability-стек (по желанию можно оставить только `postgres` + `app`, остальное не обязательно для работы API).
+
+Локальная сборка: `make build` · тесты: `make test` · линтер: `make lint` · образ: `make docker-build` · локальный run: `make run` (нужен свой Postgres и те же env).
+
+## Функционал
+
+- **GetRates** — один gRPC-метод: запрос к Grinex (resty), расчёт topN / avgNM, INSERT в `rate_snapshots`, ответ с ценами и `exchange_time`.
+- **Health** — `GET /healthz/live` (процесс), `GET /healthz/ready` (Postgres + доступность depth API).
+- **Graceful shutdown** — SIGTERM/SIGINT, остановка gRPC и HTTP с таймаутом `SHUTDOWN_TIMEOUT`.
+- **Конфиг** — переменные окружения (обязательные см. `app.env.example`) и флаги CLI с теми же смыслами (`-grpc-addr`, `-postgres-url`, …); флаги перекрывают env после `flag.Parse`.
+
+## Где смотреть
+
+| Что | Адрес / команда |
+|-----|-----------------|
+| **gRPC** | `localhost:50051`, сервис `rates.v1.RatesService`, метод `GetRates`, тело `{}`. Reflection нет — нужен `-proto`. Пример: `grpcurl -plaintext -import-path proto -import-path "$(brew --prefix protobuf)/include" -proto rates/v1/rates.proto -d '{}' localhost:50051 rates.v1.RatesService/GetRates` (Linux: второй путь часто `/usr/include`). |
+| **Метрики** | `http://localhost:8080/metrics` (Prometheus scrape в `deploy/prometheus/prometheus.yml` → UI `http://localhost:9090`). |
+| **Логи** | `docker logs -f app` (JSON); при полном compose — Grafana `http://localhost:3000`, datasource Loki. |
+| **Трейсы** | Jaeger UI `http://localhost:16686` при заданном `OTEL_COLLECTOR_URL` (в compose по умолчанию `jaeger:4318` внутри сети). Без коллектора трейсы не шлются. |
+| **Health** | `http://localhost:8080/healthz/live`, `http://localhost:8080/healthz/ready`. |
+
+Переменные и флаги — в `app.env.example` и `config/config.go` / `-help` у бинарника.
