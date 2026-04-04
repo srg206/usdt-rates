@@ -24,6 +24,7 @@ type Config struct {
 	LogLevel             string
 	LogFormat            string
 	LogDisableStacktrace bool
+	OtelCollectorURL     string
 }
 
 // Load reads required environment variables, then applies flag overrides (flag.Parse).
@@ -80,6 +81,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	otelCollectorURL := strings.TrimSpace(os.Getenv("OTEL_COLLECTOR_URL"))
 
 	cfg := &Config{
 		GRPCAddr:             grpcAddr,
@@ -95,6 +97,7 @@ func Load() (*Config, error) {
 		LogLevel:             logLevel,
 		LogFormat:            logFormat,
 		LogDisableStacktrace: logDisableStacktrace,
+		OtelCollectorURL:     otelCollectorURL,
 	}
 
 	flag.StringVar(&cfg.GRPCAddr, "grpc-addr", cfg.GRPCAddr, "gRPC listen address")
@@ -110,6 +113,7 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "zap log level (debug, info, warn, error, ...)")
 	flag.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: json or console")
 	flag.BoolVar(&cfg.LogDisableStacktrace, "log-disable-stacktrace", cfg.LogDisableStacktrace, "disable zap stack traces on warn/error")
+	flag.StringVar(&cfg.OtelCollectorURL, "otel-collector-url", cfg.OtelCollectorURL, "OpenTelemetry OTLP HTTP endpoint (host:port)")
 	flag.Parse()
 
 	if cfg.TopN < 1 || cfg.AvgN < 1 || cfg.AvgM < cfg.AvgN {

@@ -9,6 +9,9 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	grpcstd "google.golang.org/grpc"
 
@@ -17,6 +20,8 @@ import (
 	"usdt-rates/internal/grpc"
 	"usdt-rates/internal/grpc/interceptor"
 	"usdt-rates/internal/http/health"
+	"usdt-rates/internal/infrastructure/metrics"
+	"usdt-rates/internal/infrastructure/telemetry"
 	"usdt-rates/internal/usecase"
 )
 
@@ -31,17 +36,44 @@ func main() {
 		log.Fatalf("failed to initialize application: %v", err)
 	}
 
+	if app.Config.OtelCollectorURL != "" {
+		tp, err := telemetry.InitTracer(ctx, "usdt-rates", app.Config.OtelCollectorURL)
+		if err != nil {
+			app.Logger.Warn("failed to initialize otel tracer", zap.Error(err))
+		} else {
+			app.Closer.Add(func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), app.Config.ShutdownTimeout)
+				defer cancel()
+				return tp.Shutdown(ctx)
+			})
+			app.Logger.Info("otel tracer initialized", zap.String("url", app.Config.OtelCollectorURL))
+		}
+	}
+
 	lis, err := net.Listen("tcp", app.Config.GRPCAddr)
 	if err != nil {
 		app.Logger.Fatal("listen", zap.Error(err))
 	}
 
+	promMetrics := metrics.NewGRPCMetrics()
+	if err := prometheus.Register(promMetrics); err != nil {
+		app.Logger.Fatal("prometheus register grpc metrics", zap.Error(err))
+	}
+
 	s := grpcstd.NewServer(
-		grpcstd.ChainUnaryInterceptor(interceptor.UnaryRequestLogger(app.Logger)),
-		grpcstd.ChainStreamInterceptor(interceptor.StreamRequestLogger(app.Logger)),
+		grpcstd.StatsHandler(otelgrpc.NewServerHandler()),
+		grpcstd.ChainUnaryInterceptor(
+			interceptor.UnaryRequestLogger(app.Logger),
+			promMetrics.UnaryServerInterceptor(),
+		),
+		grpcstd.ChainStreamInterceptor(
+			interceptor.StreamRequestLogger(app.Logger),
+			promMetrics.StreamServerInterceptor(),
+		),
 	)
 	getRates := usecase.NewGetRates(app.Config, app.Grinex, app.PostgresRepo)
 	ratesv1.RegisterRatesServiceServer(s, grpc.NewRatesService(getRates))
+	promMetrics.InitializeMetrics(s)
 
 	app.Closer.Add(func() error {
 		s.GracefulStop()
@@ -56,6 +88,7 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
 	health.NewHandler(app.PostgresRepo, app.Grinex, app.Config.HTTPTimeout).Mount(mux)
 	healthSrv := &http.Server{Addr: app.Config.HealthHTTPAddr, Handler: mux}
 	app.Closer.Add(func() error {
