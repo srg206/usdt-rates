@@ -32,6 +32,7 @@ go.work.sum
 app.env 
 
 postgres.env
+
 # Editor/IDE
 # .idea/
 # .vscode/
