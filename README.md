@@ -6,11 +6,10 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 
 1. `cp postgres.env.example postgres.env`
 2. `cp app.env.example app.env` — в `app.env` для контейнера задайте `POSTGRES_URL=postgres://postgres:postgres@postgres:5432/usdt_rates?sslmode=disable` (хост `postgres`, не `localhost`).
-3. `docker compose up -d postgres`
-4. `docker compose --profile tools run --rm migrator`
-5. `docker compose up -d` — поднимутся `app`, observability-стек (по желанию можно оставить только `postgres` + `app`, остальное не обязательно для работы API).
+3. `docker compose up -d`
+4. `docker compose --profile tools run --rm migrator` если миграции не прошли то  `make install-goose` `make migrate-up`
 
-Локальная сборка: `make build` · тесты: `make test` · линтер: `make lint` · образ: `make docker-build` · локальный run: `make run` (нужен свой Postgres и те же env).
+Локальная сборка: `make build` · тесты: `make test` · линтер: `make lint` · образ: `make docker-build` · локальный run: `make run` (нужен свой Postgres и те же env). **Kubernetes / Helm** — в отдельном репозитории **usdt-rates-helm** https://github.com/srg206/usdt-rates-helm
 
 ## Функционал
 
@@ -23,9 +22,13 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 
 | Что | Адрес / команда |
 |-----|-----------------|
-| **gRPC** | `localhost:50051`, сервис `rates.v1.RatesService`, метод `GetRates`, тело `{}`. Reflection нет — нужен `-proto`. Пример: `grpcurl -plaintext -import-path proto -import-path "$(brew --prefix protobuf)/include" -proto rates/v1/rates.proto -d '{}' localhost:50051 rates.v1.RatesService/GetRates` (Linux: второй путь часто `/usr/include`). |
+| **gRPC** | `localhost:50051`, сервис `rates.v1.RatesService`, метод `GetRates`, тело `{}`. Reflection нет — нужен `-proto`. Пример: 
+
+`grpcurl -plaintext -import-path proto -import-path "$(brew --prefix protobuf)/include" -proto rates/v1/rates.proto -d '{}' localhost:50051 rates.v1.RatesService/GetRates` 
+(Linux: второй путь часто `/usr/include`). |
 | **Метрики** | `http://localhost:8080/metrics` (Prometheus scrape в `deploy/prometheus/prometheus.yml` → UI `http://localhost:9090`). |
 | **Логи** | `docker logs -f app` (JSON); при полном compose — Grafana `http://localhost:3000`, datasource Loki. |
+| **Grafana: курс доллара** | [usdt-rates-db](http://localhost:3000/d/usdt-rates-db) — графики bid/ask (USDT) из PostgreSQL (`rate_snapshots`). Данные появляются **только после** gRPC-вызовов `GetRates` к приложению: каждый запрос пишет снимок в БД; если к серверу ещё не обращались, дашборд будет пустым. |
 | **Трейсы** | Jaeger UI `http://localhost:16686` при заданном `OTEL_COLLECTOR_URL` (в compose по умолчанию `jaeger:4318` внутри сети). Без коллектора трейсы не шлются. |
 | **Health** | `http://localhost:8080/healthz/live`, `http://localhost:8080/healthz/ready`. |
 
