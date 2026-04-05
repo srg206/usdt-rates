@@ -5,7 +5,7 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 ## Запуск (Docker)
 
 1. `cp postgres.env.example postgres.env`
-2. `cp app.env.example app.env` — в `app.env` для контейнера задайте `POSTGRES_URL=postgres://postgres:postgres@postgres:5432/usdt_rates?sslmode=disable` (хост `postgres`, не `localhost`).
+2. `cp app.env.example app.env` — в `app.env`
 3. `docker compose up -d`
 4. `docker compose --profile tools run --rm migrator` если миграции не прошли то  `make install-goose` `make migrate-up`
 
@@ -28,7 +28,7 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 (Linux: второй путь часто `/usr/include`). |
 | **Метрики** | `http://localhost:8080/metrics` (Prometheus scrape в `deploy/prometheus/prometheus.yml` → UI `http://localhost:9090`). |
 | **Логи** | `docker logs -f app` (JSON); при полном compose — Grafana `http://localhost:3000`, datasource Loki. |
-| **Grafana: курс доллара** | [usdt-rates-db](http://localhost:3000/d/usdt-rates-db) — графики bid/ask (USDT) из PostgreSQL (`rate_snapshots`). Данные появляются **только после** gRPC-вызовов `GetRates` к приложению: каждый запрос пишет снимок в БД; если к серверу ещё не обращались, дашборд будет пустым. |
+| **Grafana (PostgreSQL)** | Дашборд [**USDT Rates — database (snapshots)**](http://localhost:3000/d/usdt-rates-db) — bid/ask из таблицы `rate_snapshots` (история с биржи Grinex). Данные появляются **только после** вызовов gRPC `GetRates`: каждый запрос пишет снимок; если к приложению ещё не обращались, графики пустые. Есть ещё техдашборд Prometheus: `USDT Rates — technical` (http://localhost:3000/d/usdt-rates-technical). |
 | **Трейсы** | Jaeger UI `http://localhost:16686` при заданном `OTEL_COLLECTOR_URL` (в compose по умолчанию `jaeger:4318` внутри сети). Без коллектора трейсы не шлются. |
 | **Health** | `http://localhost:8080/healthz/live`, `http://localhost:8080/healthz/ready`. |
 
