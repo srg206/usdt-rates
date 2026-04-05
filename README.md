@@ -11,7 +11,7 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 
 Локальная сборка: `make build` · тесты: `make test` · линтер: `make lint` · образ: `make docker-build` · локальный run: `make run` (нужен свой Postgres и те же env). **Kubernetes / Helm** — в отдельном репозитории **usdt-rates-helm** https://github.com/srg206/usdt-rates-helm
 
-## Функционал
+x## Функционал
 
 - **GetRates** — один gRPC-метод: запрос к Grinex (resty), расчёт topN / avgNM, INSERT в `rate_snapshots`, ответ с ценами и `exchange_time`.
 - **Health** — `GET /healthz/live` (процесс), `GET /healthz/ready` (Postgres + доступность depth API).
@@ -22,14 +22,10 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 
 | Что | Адрес / команда |
 |-----|-----------------|
-| **gRPC** | `localhost:50051`, сервис `rates.v1.RatesService`, метод `GetRates`, тело `{}`. Reflection нет — нужен `-proto`. Пример: 
-
-`grpcurl -plaintext -import-path proto -import-path "$(brew --prefix protobuf)/include" -proto rates/v1/rates.proto -d '{}' localhost:50051 rates.v1.RatesService/GetRates` 
-(Linux: второй путь часто `/usr/include`). |
+| **gRPC** | `localhost:50051`, сервис `rates.v1.RatesService`, метод `GetRates`, тело `{}`. Reflection нет — нужен `-proto`. Пример:<br><br>`grpcurl -plaintext -import-path proto -import-path "$(brew --prefix protobuf)/include" -proto rates/v1/rates.proto -d '{}' localhost:50051 rates.v1.RatesService/GetRates`<br>(Linux: второй путь часто `/usr/include`). |
 | **Метрики** | `http://localhost:8080/metrics` (Prometheus scrape в `deploy/prometheus/prometheus.yml` → UI `http://localhost:9090`). |
 | **Логи** | `docker logs -f app` (JSON); при полном compose — Grafana `http://localhost:3000`, datasource Loki. |
 | **Grafana (PostgreSQL)** | Дашборд [**USDT Rates — database (snapshots)**](http://localhost:3000/d/usdt-rates-db) — bid/ask из таблицы `rate_snapshots` (история с биржи Grinex). Данные появляются **только после** вызовов gRPC `GetRates`: каждый запрос пишет снимок; если к приложению ещё не обращались, графики пустые. Есть ещё техдашборд Prometheus: `USDT Rates — technical` (http://localhost:3000/d/usdt-rates-technical). |
 | **Трейсы** | Jaeger UI `http://localhost:16686` при заданном `OTEL_COLLECTOR_URL` (в compose по умолчанию `jaeger:4318` внутри сети). Без коллектора трейсы не шлются. |
 | **Health** | `http://localhost:8080/healthz/live`, `http://localhost:8080/healthz/ready`. |
-
-Переменные и флаги — в `app.env.example` и `config/config.go` / `-help` у бинарника.
+| **Переменные и флаги** | в `app.env.example` и `config/config.go` / `-help` у бинарника. |
