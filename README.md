@@ -17,7 +17,7 @@ gRPC-сервис: тянет стакан USDT с Grinex, считает bid/as
 - **GetRates** — один gRPC-метод: запрос к Grinex (resty), расчёт topN / avgNM, INSERT в `rate_snapshots`, ответ с ценами и `exchange_time`.
 - **Health** — `GET /healthz/live` (процесс), `GET /healthz/ready` (Postgres + доступность depth API).
 - **Graceful shutdown** — SIGTERM/SIGINT, остановка gRPC и HTTP с таймаутом `SHUTDOWN_TIMEOUT`.
-- **Конфиг** — переменные окружения (обязательные см. `app.env.example`) и флаги CLI с теми же смыслами (`-grpc-addr`, `-postgres-url`, …); флаги перекрывают env после `flag.Parse`.
+- **Конфиг** — переменные окружения (обязательные см. `app.env.example`) и флаги CLI с теми же смыслами (`-grpc-addr`, `-postgres-url`, …); флаги перекрывают env после `flag.Parse`. Параллель к бирже: `GRINEX_MAX_CONCURRENT` / `-grinex-max-concurrent` (семафор). **Circuit breaker** (`pkg/circuitbreaker`, Sony gobreaker) вокруг HTTP к Grinex: `GRINEX_CB_ENABLED`, `GRINEX_CB_CONSECUTIVE_FAILURES`, `GRINEX_CB_OPEN_TIMEOUT`, `GRINEX_CB_HALF_OPEN_MAX`, `GRINEX_CB_INTERVAL` — см. `app.env.example` и флаги `-grinex-cb-*`.
 
 ## Где смотреть
 

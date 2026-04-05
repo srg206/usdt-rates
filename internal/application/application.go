@@ -10,6 +10,7 @@ import (
 	"usdt-rates/config"
 	"usdt-rates/internal/infrastructure/grinex"
 	"usdt-rates/internal/infrastructure/repository"
+	"usdt-rates/pkg/circuitbreaker"
 	"usdt-rates/pkg/closer"
 	"usdt-rates/pkg/logger"
 )
@@ -62,7 +63,14 @@ func NewApp(ctx context.Context) (*App, error) {
 		return nil
 	})
 
-	gx, err := grinex.NewClient(cfg.HTTPTimeout, cfg.GrinexDepthURL, zl)
+	gx, err := grinex.NewClient(cfg.HTTPTimeout, cfg.GrinexDepthURL, cfg.GrinexMaxConcurrent, circuitbreaker.Settings{
+		Name:                "grinex",
+		Enabled:             cfg.GrinexCBEnabled,
+		ConsecutiveFailures: uint32(cfg.GrinexCBFailures),
+		OpenTimeout:         cfg.GrinexCBOpenTimeout,
+		HalfOpenMaxRequests: uint32(cfg.GrinexCBHalfOpenMax),
+		Interval:            cfg.GrinexCBInterval,
+	}, zl)
 	if err != nil {
 		return nil, fmt.Errorf("grinex: %w", err)
 	}

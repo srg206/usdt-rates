@@ -3,22 +3,25 @@ package grinex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 
 	"usdt-rates/internal/models/domain"
+	"usdt-rates/pkg/circuitbreaker"
 )
 
 var grinexTracer = otel.Tracer("usdt-rates/grinex")
@@ -38,7 +41,8 @@ type depthEnvelope struct {
 }
 
 type Client struct {
-	mu          sync.Mutex
+	fetchSem    *semaphore.Weighted
+	breaker     *gobreaker.CircuitBreaker
 	hc          *resty.Client
 	url         string
 	warmupURL   string
@@ -47,9 +51,20 @@ type Client struct {
 	log         *zap.Logger
 }
 
-func NewClient(timeout time.Duration, depthURL string, log *zap.Logger) (*Client, error) {
+// NewClient builds a Grinex HTTP client. maxConcurrent limits how many Fetch calls may run
+// concurrent HTTP traffic to the exchange at once (shared cookie jar and resty client).
+// cb wraps exchange I/O in a circuit breaker when cb.Enabled is true.
+func NewClient(timeout time.Duration, depthURL string, maxConcurrent int, cb circuitbreaker.Settings, log *zap.Logger) (*Client, error) {
+	if maxConcurrent < 1 {
+		return nil, fmt.Errorf("maxConcurrent must be >= 1, got %d", maxConcurrent)
+	}
 	if log == nil {
 		log = zap.NewNop()
+	}
+
+	breaker, err := circuitbreaker.New(log, cb)
+	if err != nil {
+		return nil, err
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -81,6 +96,8 @@ func NewClient(timeout time.Duration, depthURL string, log *zap.Logger) (*Client
 		})
 
 	return &Client{
+		fetchSem:    semaphore.NewWeighted(int64(maxConcurrent)),
+		breaker:     breaker,
 		hc:          hc,
 		url:         depthURL,
 		warmupURL:   warmupURL,
@@ -90,21 +107,45 @@ func NewClient(timeout time.Duration, depthURL string, log *zap.Logger) (*Client
 	}, nil
 }
 
+// Fetch runs the depth flow with semaphore limiting and optional circuit breaker.
 func (c *Client) Fetch(ctx context.Context) (domain.OrderBook, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.breaker == nil {
+		return c.fetchWithConcurrencyLimit(ctx)
+	}
+	v, err := c.breaker.Execute(func() (interface{}, error) {
+		return c.fetchWithConcurrencyLimit(ctx)
+	})
+	if err != nil {
+		var empty domain.OrderBook
+		if errors.Is(err, gobreaker.ErrOpenState) {
+			return empty, fmt.Errorf("grinex circuit breaker open: %w", err)
+		}
+		return empty, err
+	}
+	return v.(domain.OrderBook), nil
+}
 
+func (c *Client) fetchWithConcurrencyLimit(ctx context.Context) (domain.OrderBook, error) {
+	var empty domain.OrderBook
+	if err := c.fetchSem.Acquire(ctx, 1); err != nil {
+		return empty, err
+	}
+	defer c.fetchSem.Release(1)
+	return c.fetchOrderBook(ctx)
+}
+
+func (c *Client) fetchOrderBook(ctx context.Context) (domain.OrderBook, error) {
 	var empty domain.OrderBook
 
 	// Warmup request for cookies / WAF
 	{
-		ctx, sp := grinexTracer.Start(ctx, "HTTP GET grinex warmup")
+		traceCtx, sp := grinexTracer.Start(ctx, "HTTP GET grinex warmup")
 		sp.SetAttributes(
 			attribute.String("http.method", "GET"),
 			attribute.String("http.url", c.warmupURL),
 		)
 		_, err := c.hc.R().
-			SetContext(ctx).
+			SetContext(traceCtx).
 			SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8").
 			Get(c.warmupURL)
 		if err != nil {
@@ -118,14 +159,14 @@ func (c *Client) Fetch(ctx context.Context) (domain.OrderBook, error) {
 
 	var resp *resty.Response
 	{
-		ctx, sp := grinexTracer.Start(ctx, "HTTP GET grinex depth")
+		traceCtx, sp := grinexTracer.Start(ctx, "HTTP GET grinex depth")
 		sp.SetAttributes(
 			attribute.String("http.method", "GET"),
 			attribute.String("http.url", c.url),
 		)
 		var err error
 		resp, err = c.hc.R().
-			SetContext(ctx).
+			SetContext(traceCtx).
 			SetHeader("Accept", "application/json, text/plain, */*").
 			SetHeader("Origin", c.jsonOrigin).
 			SetHeader("Referer", c.jsonReferer).

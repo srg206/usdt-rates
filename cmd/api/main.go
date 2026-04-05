@@ -37,9 +37,9 @@ func main() {
 	}
 
 	if app.Config.OtelCollectorURL != "" {
-		tp, err := telemetry.InitTracer(ctx, "usdt-rates", app.Config.OtelCollectorURL)
-		if err != nil {
-			app.Logger.Warn("failed to initialize otel tracer", zap.Error(err))
+		tp, tracerErr := telemetry.InitTracer(ctx, "usdt-rates", app.Config.OtelCollectorURL)
+		if tracerErr != nil {
+			app.Logger.Warn("failed to initialize otel tracer", zap.Error(tracerErr))
 		} else {
 			app.Closer.Add(func() error {
 				ctx, cancel := context.WithTimeout(context.Background(), app.Config.ShutdownTimeout)

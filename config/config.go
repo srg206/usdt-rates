@@ -16,6 +16,12 @@ type Config struct {
 	PostgresURL          string
 	MigrationsPath       string
 	GrinexDepthURL       string
+	GrinexMaxConcurrent  int
+	GrinexCBEnabled      bool
+	GrinexCBFailures     int
+	GrinexCBOpenTimeout  time.Duration
+	GrinexCBHalfOpenMax  int
+	GrinexCBInterval     time.Duration
 	HTTPTimeout          time.Duration
 	TopN                 int
 	AvgN                 int
@@ -46,6 +52,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	grinexDepthURL, err := requireEnv("GRINEX_DEPTH_URL")
+	if err != nil {
+		return nil, err
+	}
+	grinexMaxConcurrent, err := requireInt("GRINEX_MAX_CONCURRENT")
 	if err != nil {
 		return nil, err
 	}
@@ -83,12 +93,39 @@ func Load() (*Config, error) {
 	}
 	otelCollectorURL := strings.TrimSpace(os.Getenv("OTEL_COLLECTOR_URL"))
 
+	grinexCBEnabled, err := optionalBool("GRINEX_CB_ENABLED", true)
+	if err != nil {
+		return nil, err
+	}
+	grinexCBFailures, err := optionalPositiveInt("GRINEX_CB_CONSECUTIVE_FAILURES", 5)
+	if err != nil {
+		return nil, err
+	}
+	grinexCBOpenTimeout, err := optionalDurationOr("GRINEX_CB_OPEN_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	grinexCBHalfOpenMax, err := optionalPositiveInt("GRINEX_CB_HALF_OPEN_MAX", 3)
+	if err != nil {
+		return nil, err
+	}
+	grinexCBInterval, err := optionalDurationOrZero("GRINEX_CB_INTERVAL")
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		GRPCAddr:             grpcAddr,
 		HealthHTTPAddr:       healthHTTPAddr,
 		PostgresURL:          postgresURL,
 		MigrationsPath:       migrationsPath,
 		GrinexDepthURL:       grinexDepthURL,
+		GrinexMaxConcurrent:  grinexMaxConcurrent,
+		GrinexCBEnabled:      grinexCBEnabled,
+		GrinexCBFailures:     grinexCBFailures,
+		GrinexCBOpenTimeout:  grinexCBOpenTimeout,
+		GrinexCBHalfOpenMax:  grinexCBHalfOpenMax,
+		GrinexCBInterval:     grinexCBInterval,
 		HTTPTimeout:          httpTimeout,
 		ShutdownTimeout:      shutdownTimeout,
 		TopN:                 topN,
@@ -105,6 +142,12 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.PostgresURL, "postgres-url", cfg.PostgresURL, "PostgreSQL connection URL")
 	flag.StringVar(&cfg.MigrationsPath, "migrations-path", cfg.MigrationsPath, "goose migrations directory")
 	flag.StringVar(&cfg.GrinexDepthURL, "grinex-depth-url", cfg.GrinexDepthURL, "Grinex HTTP depth/order book URL")
+	flag.IntVar(&cfg.GrinexMaxConcurrent, "grinex-max-concurrent", cfg.GrinexMaxConcurrent, "max concurrent Grinex HTTP fetch operations (semaphore)")
+	flag.BoolVar(&cfg.GrinexCBEnabled, "grinex-cb-enabled", cfg.GrinexCBEnabled, "enable circuit breaker for Grinex HTTP")
+	flag.IntVar(&cfg.GrinexCBFailures, "grinex-cb-consecutive-failures", cfg.GrinexCBFailures, "trip breaker after this many consecutive Grinex failures")
+	flag.DurationVar(&cfg.GrinexCBOpenTimeout, "grinex-cb-open-timeout", cfg.GrinexCBOpenTimeout, "how long breaker stays open before half-open trial")
+	flag.IntVar(&cfg.GrinexCBHalfOpenMax, "grinex-cb-half-open-max", cfg.GrinexCBHalfOpenMax, "max calls in half-open state")
+	flag.DurationVar(&cfg.GrinexCBInterval, "grinex-cb-interval", cfg.GrinexCBInterval, "closed-state window to reset failure counts (0 = never reset)")
 	flag.DurationVar(&cfg.HTTPTimeout, "http-timeout", cfg.HTTPTimeout, "HTTP client timeout")
 	flag.IntVar(&cfg.TopN, "calc-top-n", cfg.TopN, "1-based order book index for topN price")
 	flag.IntVar(&cfg.AvgN, "calc-avg-n", cfg.AvgN, "1-based start level for avgNM (inclusive)")
@@ -119,7 +162,69 @@ func Load() (*Config, error) {
 	if cfg.TopN < 1 || cfg.AvgN < 1 || cfg.AvgM < cfg.AvgN {
 		return nil, fmt.Errorf("invalid calc bounds: top_n=%d avg_n=%d avg_m=%d", cfg.TopN, cfg.AvgN, cfg.AvgM)
 	}
+	if cfg.GrinexMaxConcurrent < 1 {
+		return nil, fmt.Errorf("GRINEX_MAX_CONCURRENT must be >= 1, got %d", cfg.GrinexMaxConcurrent)
+	}
+	if cfg.GrinexCBEnabled {
+		if cfg.GrinexCBFailures < 1 {
+			return nil, fmt.Errorf("GRINEX_CB_CONSECUTIVE_FAILURES must be >= 1, got %d", cfg.GrinexCBFailures)
+		}
+		if cfg.GrinexCBOpenTimeout <= 0 {
+			return nil, fmt.Errorf("GRINEX_CB_OPEN_TIMEOUT must be > 0")
+		}
+		if cfg.GrinexCBHalfOpenMax < 1 {
+			return nil, fmt.Errorf("GRINEX_CB_HALF_OPEN_MAX must be >= 1, got %d", cfg.GrinexCBHalfOpenMax)
+		}
+	}
 	return cfg, nil
+}
+
+func optionalBool(key string, defaultVal bool) (bool, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return defaultVal, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("environment variable %q: invalid bool %q: %w", key, v, err)
+	}
+	return b, nil
+}
+
+func optionalPositiveInt(key string, defaultVal int) (int, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return defaultVal, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("environment variable %q: invalid integer %q: %w", key, v, err)
+	}
+	return n, nil
+}
+
+func optionalDurationOr(key string, defaultVal time.Duration) (time.Duration, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return defaultVal, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("environment variable %q: invalid duration %q: %w", key, v, err)
+	}
+	return d, nil
+}
+
+func optionalDurationOrZero(key string) (time.Duration, error) {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("environment variable %q: invalid duration %q: %w", key, v, err)
+	}
+	return d, nil
 }
 
 func requireEnv(key string) (string, error) {
