@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"usdt-rates/internal/infrastructure/grinex"
+	"usdt-rates/pkg/circuitbreaker"
 )
 
 func TestClient_Fetch_Success_LegacyFormat(t *testing.T) {
@@ -19,16 +20,17 @@ func TestClient_Fetch_Success_LegacyFormat(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+		_, err := w.Write([]byte(`{
 			"bids": [["100.5", "1.0"], ["100.0", "2.5"]],
 			"asks": [["101.0", "1.5"], ["101.5", "3.0"]],
 			"timestamp": 1672531200
 		}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
 	logger := zap.NewNop()
-	client, err := grinex.NewClient(2*time.Second, server.URL, logger)
+	client, err := grinex.NewClient(2*time.Second, server.URL, 4, circuitbreaker.Settings{Enabled: false}, logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -46,16 +48,17 @@ func TestClient_Fetch_Success_CurrentFormat(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+		_, err := w.Write([]byte(`{
 			"bids": [{"price": "90.5", "volume": "10"}, {"price": 90.0, "volume": "20"}],
 			"asks": [{"price": "91.0", "volume": "15"}, {"price": 91.5, "volume": "25"}],
 			"ts": 1672531205
 		}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
 	logger := zap.NewNop()
-	client, err := grinex.NewClient(2*time.Second, server.URL, logger)
+	client, err := grinex.NewClient(2*time.Second, server.URL, 4, circuitbreaker.Settings{Enabled: false}, logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -73,16 +76,17 @@ func TestClient_Fetch_EmptyBookFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+		_, err := w.Write([]byte(`{
 			"bids": [["90.5", "10"], ["90.0", "20"]],
 			"asks": [],
 			"ts_ms": 1672531205000
 		}`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
 	logger := zap.NewNop()
-	client, err := grinex.NewClient(2*time.Second, server.URL, logger)
+	client, err := grinex.NewClient(2*time.Second, server.URL, 4, circuitbreaker.Settings{Enabled: false}, logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -98,13 +102,14 @@ func TestClient_Fetch_EmptyBookFallback(t *testing.T) {
 func TestClient_Fetch_HTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`Internal Server Error`))
+		_, err := w.Write([]byte(`Internal Server Error`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
 	logger := zap.NewNop()
 	// Set very short timeout to fail fast
-	client, err := grinex.NewClient(10*time.Millisecond, server.URL, logger)
+	client, err := grinex.NewClient(10*time.Millisecond, server.URL, 4, circuitbreaker.Settings{Enabled: false}, logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -118,12 +123,13 @@ func TestClient_Fetch_InvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{invalid json`))
+		_, err := w.Write([]byte(`{invalid json`))
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
 	logger := zap.NewNop()
-	client, err := grinex.NewClient(2*time.Second, server.URL, logger)
+	client, err := grinex.NewClient(2*time.Second, server.URL, 4, circuitbreaker.Settings{Enabled: false}, logger)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -133,9 +139,57 @@ func TestClient_Fetch_InvalidJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "decode depth")
 }
 
+func TestClient_Fetch_CircuitBreakerOpens(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err := w.Write([]byte(`err`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	logger := zap.NewNop()
+	client, err := grinex.NewClient(2*time.Second, server.URL, 4, circuitbreaker.Settings{
+		Name:                "test",
+		Enabled:             true,
+		ConsecutiveFailures: 2,
+		OpenTimeout:         time.Hour,
+		HalfOpenMaxRequests: 1,
+		Interval:            0,
+	}, logger)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = client.Fetch(ctx)
+	require.Error(t, err)
+	_, err = client.Fetch(ctx)
+	require.Error(t, err)
+	_, err = client.Fetch(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "circuit breaker open")
+}
+
+func TestNewClient_CircuitBreakerInvalidSettings(t *testing.T) {
+	logger := zap.NewNop()
+	_, err := grinex.NewClient(2*time.Second, "https://example.com/depth", 4, circuitbreaker.Settings{
+		Enabled:             true,
+		ConsecutiveFailures: 0,
+		OpenTimeout:         time.Second,
+		HalfOpenMaxRequests: 1,
+	}, logger)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "circuit breaker")
+}
+
+func TestNewClient_MaxConcurrentInvalid(t *testing.T) {
+	logger := zap.NewNop()
+	_, err := grinex.NewClient(2*time.Second, "https://example.com/depth", 0, circuitbreaker.Settings{Enabled: false}, logger)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "maxConcurrent")
+}
+
 func TestNewClient_InvalidURL(t *testing.T) {
 	logger := zap.NewNop()
-	_, err := grinex.NewClient(2*time.Second, "::invalid-url", logger)
+	_, err := grinex.NewClient(2*time.Second, "::invalid-url", 4, circuitbreaker.Settings{Enabled: false}, logger)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse depth url")
@@ -143,7 +197,7 @@ func TestNewClient_InvalidURL(t *testing.T) {
 
 func TestNewClient_MissingHost(t *testing.T) {
 	logger := zap.NewNop()
-	_, err := grinex.NewClient(2*time.Second, "/relative/path", logger)
+	_, err := grinex.NewClient(2*time.Second, "/relative/path", 4, circuitbreaker.Settings{Enabled: false}, logger)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid depth url")
