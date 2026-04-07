@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -54,7 +52,9 @@ type Client struct {
 // NewClient builds a Grinex HTTP client. maxConcurrent limits how many Fetch calls may run
 // concurrent HTTP traffic to the exchange at once (shared cookie jar and resty client).
 // cb wraps exchange I/O in a circuit breaker when cb.Enabled is true.
-func NewClient(timeout time.Duration, depthURL string, maxConcurrent int, cb circuitbreaker.Settings, log *zap.Logger) (*Client, error) {
+// warmupURL, jsonOrigin, and jsonReferer must be set explicitly (e.g. via env); they are not derived from depthURL.
+// HTTP(S) shape of these values is validated in config.Load.
+func NewClient(timeout time.Duration, depthURL, warmupURL, jsonOrigin, jsonReferer string, maxConcurrent int, cb circuitbreaker.Settings, log *zap.Logger) (*Client, error) {
 	if maxConcurrent < 1 {
 		return nil, fmt.Errorf("maxConcurrent must be >= 1, got %d", maxConcurrent)
 	}
@@ -70,11 +70,6 @@ func NewClient(timeout time.Duration, depthURL string, maxConcurrent int, cb cir
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, fmt.Errorf("cookie jar: %w", err)
-	}
-
-	warmupURL, jsonOrigin, jsonReferer, err := parseDepthWarmupTargets(depthURL)
-	if err != nil {
-		return nil, err
 	}
 
 	hc := resty.New().
@@ -244,42 +239,6 @@ func (c *Client) fetchOrderBook(ctx context.Context) (domain.OrderBook, error) {
 	)
 
 	return book, nil
-}
-
-func parseDepthWarmupTargets(depthURL string) (warmupURL, jsonOrigin, jsonReferer string, err error) {
-	u, err := url.Parse(depthURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("parse depth url: %w", err)
-	}
-	if u.Scheme == "" || u.Host == "" {
-		return "", "", "", fmt.Errorf("invalid depth url")
-	}
-
-	apiHost := u.Hostname()
-	apexHost := apiHost
-
-	if h, ok := strings.CutPrefix(apiHost, "api."); ok && h != "" {
-		apexHost = h
-	}
-
-	if port := u.Port(); port != "" {
-		apiHost = apiHost + ":" + port
-		apexHost = apexHost + ":" + port
-	}
-
-	scheme := u.Scheme
-
-	if apexHost != apiHost {
-		warmupURL = scheme + "://" + apexHost + "/"
-		jsonOrigin = scheme + "://" + apexHost
-		jsonReferer = jsonOrigin + "/"
-	} else {
-		warmupURL = scheme + "://" + apiHost + "/"
-		jsonOrigin = scheme + "://" + apiHost
-		jsonReferer = jsonOrigin + "/"
-	}
-
-	return warmupURL, jsonOrigin, jsonReferer, nil
 }
 
 func parseSidePrices(data json.RawMessage) ([]float64, error) {

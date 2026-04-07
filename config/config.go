@@ -16,6 +16,9 @@ type Config struct {
 	PostgresURL          string
 	MigrationsPath       string
 	GrinexDepthURL       string
+	GrinexWarmupURL      string
+	GrinexJSONOrigin     string
+	GrinexJSONReferer    string
 	GrinexMaxConcurrent  int
 	GrinexCBEnabled      bool
 	GrinexCBFailures     int
@@ -52,6 +55,18 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	grinexDepthURL, err := requireEnv("GRINEX_DEPTH_URL")
+	if err != nil {
+		return nil, err
+	}
+	grinexWarmupURL, err := requireEnv("GRINEX_WARMUP_URL")
+	if err != nil {
+		return nil, err
+	}
+	grinexJSONOrigin, err := requireEnv("GRINEX_JSON_ORIGIN")
+	if err != nil {
+		return nil, err
+	}
+	grinexJSONReferer, err := requireEnv("GRINEX_JSON_REFERER")
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +135,9 @@ func Load() (*Config, error) {
 		PostgresURL:          postgresURL,
 		MigrationsPath:       migrationsPath,
 		GrinexDepthURL:       grinexDepthURL,
+		GrinexWarmupURL:      grinexWarmupURL,
+		GrinexJSONOrigin:     grinexJSONOrigin,
+		GrinexJSONReferer:    grinexJSONReferer,
 		GrinexMaxConcurrent:  grinexMaxConcurrent,
 		GrinexCBEnabled:      grinexCBEnabled,
 		GrinexCBFailures:     grinexCBFailures,
@@ -142,6 +160,9 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.PostgresURL, "postgres-url", cfg.PostgresURL, "PostgreSQL connection URL")
 	flag.StringVar(&cfg.MigrationsPath, "migrations-path", cfg.MigrationsPath, "goose migrations directory")
 	flag.StringVar(&cfg.GrinexDepthURL, "grinex-depth-url", cfg.GrinexDepthURL, "Grinex HTTP depth/order book URL")
+	flag.StringVar(&cfg.GrinexWarmupURL, "grinex-warmup-url", cfg.GrinexWarmupURL, "Grinex warmup GET URL (HTML, cookies / WAF)")
+	flag.StringVar(&cfg.GrinexJSONOrigin, "grinex-json-origin", cfg.GrinexJSONOrigin, "Origin header for Grinex depth JSON request")
+	flag.StringVar(&cfg.GrinexJSONReferer, "grinex-json-referer", cfg.GrinexJSONReferer, "Referer header for Grinex depth JSON request")
 	flag.IntVar(&cfg.GrinexMaxConcurrent, "grinex-max-concurrent", cfg.GrinexMaxConcurrent, "max concurrent Grinex HTTP fetch operations (semaphore)")
 	flag.BoolVar(&cfg.GrinexCBEnabled, "grinex-cb-enabled", cfg.GrinexCBEnabled, "enable circuit breaker for Grinex HTTP")
 	flag.IntVar(&cfg.GrinexCBFailures, "grinex-cb-consecutive-failures", cfg.GrinexCBFailures, "trip breaker after this many consecutive Grinex failures")
