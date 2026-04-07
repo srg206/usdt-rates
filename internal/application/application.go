@@ -63,7 +63,7 @@ func NewApp(ctx context.Context) (*App, error) {
 		return nil
 	})
 
-	gx, err := grinex.NewClient(cfg.HTTPTimeout, cfg.GrinexDepthURL, cfg.GrinexMaxConcurrent, circuitbreaker.Settings{
+	gx, err := grinex.NewClient(cfg.HTTPTimeout, cfg.GrinexDepthURL, cfg.GrinexWarmupURL, cfg.GrinexJSONOrigin, cfg.GrinexJSONReferer, cfg.GrinexMaxConcurrent, circuitbreaker.Settings{
 		Name:                "grinex",
 		Enabled:             cfg.GrinexCBEnabled,
 		ConsecutiveFailures: uint32(cfg.GrinexCBFailures),
