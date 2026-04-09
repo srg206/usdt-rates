@@ -8,19 +8,24 @@ import (
 	"google.golang.org/grpc/status"
 
 	ratesv1 "usdt-rates/gen/rates/v1"
+	"usdt-rates/internal/models/domain"
 	apperrors "usdt-rates/internal/models/errors"
 	"usdt-rates/internal/models/mappers"
-	"usdt-rates/internal/usecase"
 )
 
-// RatesService implements ratesv1.RatesServiceServer by delegating to usecase.GetRates.
+// RatesExecutor is the use-case contract expected by the gRPC transport layer.
+type RatesExecutor interface {
+	Execute(ctx context.Context) (domain.RateSnapshot, error)
+}
+
+// RatesService implements ratesv1.RatesServiceServer by delegating to RatesExecutor.
 type RatesService struct {
 	ratesv1.UnimplementedRatesServiceServer
-	uc *usecase.GetRates
+	uc RatesExecutor
 }
 
 // NewRatesService builds the gRPC adapter.
-func NewRatesService(uc *usecase.GetRates) *RatesService {
+func NewRatesService(uc RatesExecutor) *RatesService {
 	return &RatesService{uc: uc}
 }
 

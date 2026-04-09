@@ -7,7 +7,7 @@ import (
 	"usdt-rates/config"
 	"usdt-rates/internal/calc"
 	"usdt-rates/internal/models/domain"
-	"usdt-rates/internal/models/errors"
+	apperrors "usdt-rates/internal/models/errors"
 	"usdt-rates/internal/models/mappers"
 )
 
@@ -30,6 +30,9 @@ func (u *GetRates) Execute(ctx context.Context) (domain.RateSnapshot, error) {
 		return domain.RateSnapshot{}, fmt.Errorf("%w: %v", apperrors.ErrOrderBook, err)
 	}
 
+	if len(book.Bids) == 0 || len(book.Asks) == 0 {
+		return domain.RateSnapshot{}, fmt.Errorf("%w: empty order book", apperrors.ErrOrderBook)
+	}
 	bid := book.Bids[0]
 	ask := book.Asks[0]
 
