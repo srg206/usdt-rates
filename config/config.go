@@ -74,6 +74,26 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	grinexCBEnabled, err := requireBool("GRINEX_CB_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	grinexCBFailures, err := requireInt("GRINEX_CB_CONSECUTIVE_FAILURES")
+	if err != nil {
+		return nil, err
+	}
+	grinexCBOpenTimeout, err := requireDuration("GRINEX_CB_OPEN_TIMEOUT")
+	if err != nil {
+		return nil, err
+	}
+	grinexCBHalfOpenMax, err := requireInt("GRINEX_CB_HALF_OPEN_MAX")
+	if err != nil {
+		return nil, err
+	}
+	grinexCBInterval, err := requireDuration("GRINEX_CB_INTERVAL")
+	if err != nil {
+		return nil, err
+	}
 	httpTimeout, err := requireDuration("HTTP_CLIENT_TIMEOUT")
 	if err != nil {
 		return nil, err
@@ -107,27 +127,6 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	otelCollectorURL := strings.TrimSpace(os.Getenv("OTEL_COLLECTOR_URL"))
-
-	grinexCBEnabled, err := optionalBool("GRINEX_CB_ENABLED", true)
-	if err != nil {
-		return nil, err
-	}
-	grinexCBFailures, err := optionalPositiveInt("GRINEX_CB_CONSECUTIVE_FAILURES", 5)
-	if err != nil {
-		return nil, err
-	}
-	grinexCBOpenTimeout, err := optionalDurationOr("GRINEX_CB_OPEN_TIMEOUT", 30*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	grinexCBHalfOpenMax, err := optionalPositiveInt("GRINEX_CB_HALF_OPEN_MAX", 3)
-	if err != nil {
-		return nil, err
-	}
-	grinexCBInterval, err := optionalDurationOrZero("GRINEX_CB_INTERVAL")
-	if err != nil {
-		return nil, err
-	}
 
 	cfg := &Config{
 		GRPCAddr:             grpcAddr,
@@ -186,66 +185,7 @@ func Load() (*Config, error) {
 	if cfg.GrinexMaxConcurrent < 1 {
 		return nil, fmt.Errorf("GRINEX_MAX_CONCURRENT must be >= 1, got %d", cfg.GrinexMaxConcurrent)
 	}
-	if cfg.GrinexCBEnabled {
-		if cfg.GrinexCBFailures < 1 {
-			return nil, fmt.Errorf("GRINEX_CB_CONSECUTIVE_FAILURES must be >= 1, got %d", cfg.GrinexCBFailures)
-		}
-		if cfg.GrinexCBOpenTimeout <= 0 {
-			return nil, fmt.Errorf("GRINEX_CB_OPEN_TIMEOUT must be > 0")
-		}
-		if cfg.GrinexCBHalfOpenMax < 1 {
-			return nil, fmt.Errorf("GRINEX_CB_HALF_OPEN_MAX must be >= 1, got %d", cfg.GrinexCBHalfOpenMax)
-		}
-	}
 	return cfg, nil
-}
-
-func optionalBool(key string, defaultVal bool) (bool, error) {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		return defaultVal, nil
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("environment variable %q: invalid bool %q: %w", key, v, err)
-	}
-	return b, nil
-}
-
-func optionalPositiveInt(key string, defaultVal int) (int, error) {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		return defaultVal, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0, fmt.Errorf("environment variable %q: invalid integer %q: %w", key, v, err)
-	}
-	return n, nil
-}
-
-func optionalDurationOr(key string, defaultVal time.Duration) (time.Duration, error) {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		return defaultVal, nil
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, fmt.Errorf("environment variable %q: invalid duration %q: %w", key, v, err)
-	}
-	return d, nil
-}
-
-func optionalDurationOrZero(key string) (time.Duration, error) {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		return 0, nil
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, fmt.Errorf("environment variable %q: invalid duration %q: %w", key, v, err)
-	}
-	return d, nil
 }
 
 func requireEnv(key string) (string, error) {

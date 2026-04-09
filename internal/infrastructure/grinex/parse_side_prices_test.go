@@ -42,3 +42,43 @@ func TestParseSidePrices_RawAsksOnlyProductionShape(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []float64{80.63}, got)
 }
+
+func TestParseSidePrices_LegacyMatrixStringPrices(t *testing.T) {
+	raw := json.RawMessage(`[["100.5", "1.0"], ["99.0", "2.5"]]`)
+	got, err := parseSidePrices(raw)
+	require.NoError(t, err)
+	assert.Equal(t, []float64{100.5, 99.0}, got)
+}
+
+func TestParseSidePrices_LegacyMatrixNumericPrices(t *testing.T) {
+	raw := json.RawMessage(`[[100.5, 1.0], [99.0, 2.5]]`)
+	got, err := parseSidePrices(raw)
+	require.NoError(t, err)
+	assert.Equal(t, []float64{100.5, 99.0}, got)
+}
+
+func TestParseSidePrices_NullData(t *testing.T) {
+	got, err := parseSidePrices(json.RawMessage("null"))
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestParseSidePrices_EmptyData(t *testing.T) {
+	got, err := parseSidePrices(nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestParseSidePrices_MissingPriceKey(t *testing.T) {
+	raw := json.RawMessage(`[{"volume":"10","amount":"100"}]`)
+	_, err := parseSidePrices(raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing price")
+}
+
+func TestParseSidePrices_BadScalarType(t *testing.T) {
+	raw := json.RawMessage(`[{"price": true}]`)
+	_, err := parseSidePrices(raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported price type")
+}
